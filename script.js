@@ -1,14 +1,16 @@
 import { voices } from './voices.js';
+const muteButton = document.querySelector('#mute-button');
 const volumeSlider = document.querySelector('#volume-slider input');
 const volumeNumber = document.querySelector('#volume-slider .number-box');
 const speedSlider = document.querySelector('#speed-slider input');
 const speedNumber = document.querySelector('#speed-slider .number-box');
-const freqs = [20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480];
-const amps = [0, 0.707, 1, 1, 1, 1, 1, 1, 1, 0.707, 0];
+const freqs = [20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480]; // frequencies of octaves over minFreq
+const amps = [0, 0.707, 1, 0.9, 0.81, 0.73, 0.66, 0.59, 0.53, 0.48, 0]; // amplitude jeyfreames 
 const numOctaves = 10;
 const minFreq = 20;
 const controlPeriod = 0.01;
 const audioDeviceIndex = 10;
+const defaultWaveform = 'saw';
 let audioContext = null;
 let masterGain = null;
 let volume = volumeSlider.value; // %
@@ -16,16 +18,22 @@ let speed = speedSlider.value; // cents per second
 let f0 = minFreq;
 let lastTime = 0;
 
-volumeSlider.addEventListener("input", (event) => {
-  volume = event.target.value;
-  masterGain.gain.value = volumeToLinear(volume);
-  volumeNumber.innerHTML = volume;
-});
+muteButton.addEventListener('pointerdown', () => setVolume(0));
+volumeSlider.addEventListener('input', (event) => setVolume(event.target.value));
+speedSlider.addEventListener('input', (event) => setSpeed(event.target.value));
 
-speedSlider.addEventListener("input", (event) => {
-  speed = event.target.value;
-  speedNumber.innerHTML = speed;
-});
+function setVolume(value) {
+  volume = value;
+  masterGain.gain.value = volumeToLinear(value);
+  volumeNumber.innerHTML = value;
+  volumeSlider.value = value;
+}
+
+function setSpeed(value) {
+  speed = value;
+  speedNumber.innerHTML = value;
+  speedSlider.value = value;
+}
 
 function getAmpForFreq(freq) {
   const octave = Math.log(freq / 20) / Math.log(2);
@@ -121,7 +129,7 @@ function initVoices(voices, merger) {
 
     const osc = audioContext.createOscillator();
     osc.connect(gain);
-    osc.type = voice.waveform;
+    osc.type = voice.waveform || defaultWaveform;
     osc.frequency.value = freq;
     osc.start(time);
 
@@ -188,7 +196,7 @@ function centToLinear(val) {
 
 function volumeToLinear(volume) {
   return (volume > 0) ? decibelToLinear(0.5 * volume - 50) : 0;
-  }
+}
 
 function decibelToLinear(val) {
   return Math.exp(0.11512925464970229 * val); // pow(10, val / 20)
