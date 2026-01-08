@@ -30,7 +30,7 @@ body {
   color: #fff;
 }
 
-.slider {
+.control-element {
   width: 90%;
   margin-top: 10px;
 }
@@ -54,11 +54,33 @@ input {
   text-align: right;
 }
 
-#volume-slider .number-box::after {
+.button {
+  display: inline-block;
+  width: 50px;
+  margin-right: 5px;
+  border-style: solid;
+  border-width: 1px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.button.disabled {
+  opacity: 0.25;
+}
+
+.button:hover {
+  background: #333;
+}
+
+.button:active {
+  color: #000;
+  background: #fff;
+}
+
+#volume-slider .number-box::after, #lfe-slider .number-box::after {
   content: " %";
 }
 
 #speed-slider .number-box::after {
   content: " cent/sec";
 }
-
