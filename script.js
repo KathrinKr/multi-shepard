@@ -3,11 +3,12 @@ const volumeNumber = document.querySelector("#volume-slider .number-box");
 const speedSlider = document.querySelector("#speed-slider input");
 const speedNumber = document.querySelector("#speed-slider .number-box");
 const startButton = document.querySelector("#start-audio");
+const muteButton = document.querySelector("#mute-button");
 
 const numOctaves = 10;
 const minFreq = 20;
-const freqs = [20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480];
-const amps = [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0];
+const freqs = [20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480]; // frequencies of octaves over minFreq
+const amps = [0, 0.707, 1, 0.9, 0.81, 0.73, 0.66, 0.59, 0.53, 0.48, 0]; // amplitude jeyfreames
 const controlPeriod = 0.01;
 
 let audioContext = null;
@@ -17,18 +18,48 @@ let speed = 200; // cents per second
 let f0 = minFreq;
 let lastTime = 0;
 
-const audioDeviceIndex = 10; // optional, kann ignoriert werden
+const audioDeviceIndex = 10;
+const defaultWaveform = "saw";
 
-volumeSlider.addEventListener("input", (event) => {
-  const volume = event.target.value;
-  if (masterGain) masterGain.gain.value = volumeToLinear(volume);
-  volumeNumber.innerHTML = volume;
+let isMuted = false;
+let previousVolume = volumeSlider.value; // merkt sich vorherigen Lautstärkewert
+
+muteButton.addEventListener("pointerdown", () => {
+  if (!masterGain) return; // falls Audio noch nicht gestartet
+
+  if (!isMuted) {
+    // stummschalten
+    previousVolume = volumeSlider.value;
+    masterGain.gain.value = 0;
+    volumeNumber.innerHTML = 0;
+    volumeSlider.value = 0;
+    muteButton.innerHTML = "unmute";
+  } else {
+    // Lautstärke zurück
+    masterGain.gain.value = volumeToLinear(previousVolume);
+    volumeNumber.innerHTML = previousVolume;
+    volumeSlider.value = previousVolume;
+    muteButton.innerHTML = "mute";
+  }
+
+  isMuted = !isMuted;
 });
 
-speedSlider.addEventListener("input", (event) => {
-  speed = event.target.value;
-  speedNumber.innerHTML = speed;
-});
+volumeSlider.addEventListener("input", (event) =>
+  setVolume(event.target.value)
+);
+speedSlider.addEventListener("input", (event) => setSpeed(event.target.value));
+
+function setVolume(value) {
+  if (!masterGain) return;
+  masterGain.gain.value = volumeToLinear(value);
+}
+
+function setSpeed(value) {
+  speed = value;
+  speedNumber.innerHTML = value;
+  speedSlider.value = value;
+}
 
 function getAmpForFreq(freq) {
   const octave = Math.log(freq / 20) / Math.log(2);
