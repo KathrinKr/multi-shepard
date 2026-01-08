@@ -6,13 +6,14 @@ const startButton = document.querySelector("#start-audio");
 
 const numOctaves = 10;
 const minFreq = 20;
+const freqs = [20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240, 20480];
+const amps = [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0];
 const controlPeriod = 0.01;
+
 let audioContext = null;
+let voices = null;
 let masterGain = null;
-let lfeGain = null;
-let masterVolume = volumeSlider.value; // %
-let lfeVolume = lfeSlider.value; // %
-let speed = speedSlider.value; // cents per second
+let speed = 200; // cents per second
 let f0 = minFreq;
 let lastTime = 0;
 
@@ -24,18 +25,10 @@ volumeSlider.addEventListener("input", (event) => {
   volumeNumber.innerHTML = volume;
 });
 
-function setLfeVolume(value) {
-  lfeVolume = parseInt(value);
-  lfeGain.gain.value = volumeToLinear(lfeVolume);
-  lfeNumber.innerHTML = lfeVolume;
-  lfeSlider.value = lfeVolume;
-}
-
-function setSpeed(value) {
-  speed = value;
-  speedNumber.innerHTML = value;
-  speedSlider.value = value;
-}
+speedSlider.addEventListener("input", (event) => {
+  speed = event.target.value;
+  speedNumber.innerHTML = speed;
+});
 
 function getAmpForFreq(freq) {
   const octave = Math.log(freq / 20) / Math.log(2);
@@ -74,8 +67,9 @@ function setupOutputs() {
   return channelMerger;
 }
 
-function initVoices(voices, merger) {
+function createVoices(merger, numVoices) {
   const time = audioContext.currentTime;
+  const voices = [];
   const numChannels = merger.numberOfInputs;
 
   for (let i = 0; i < numVoices; i++) {
@@ -84,9 +78,8 @@ function initVoices(voices, merger) {
 
     const gain = audioContext.createGain();
     gain.gain.value = 1;
-    const ch = channel % numChannels;
+    const ch = i % numChannels;
     gain.connect(merger, 0, ch);
-    gain.connect(lfeGain);
 
     const osc = audioContext.createOscillator();
     osc.connect(gain);
@@ -133,14 +126,7 @@ function onControlFrame() {
       const amp = 0.1 * getAmpForFreq(freq);
       osc.frequency.cancelAndHoldAtTime(time);
       osc.frequency.linearRampToValueAtTime(freq, time + controlPeriod);
-      const ampTarget = 0.1 * getAmpForFreq(freq);
-      const ampCurrent = gain.gain.value;
-      const smoothing = 0.05; // Dauer des Crossfades in Sekunden
-
-      gain.gain.cancelScheduledValues(time);
-      gain.gain.setValueAtTime(ampCurrent, time); // aktueller Wert
-      gain.gain.linearRampToValueAtTime(ampTarget, time + smoothing);
-
+      gain.gain.linearRampToValueAtTime(amp, time + controlPeriod);
       voice.octave = octave;
     } else {
       const jumpOctave = octave >= 0 ? 0 : numOctaves - 1;
