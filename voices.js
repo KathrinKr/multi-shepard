@@ -4,7 +4,6 @@ export const voices = [
     octave: [0, 7, 4],
     waveform: "square", // 'sine', 'square', 'sawtooth', 'triangle'
   },
-
   {
     channel: 1, //front right
     octave: [2, 9, 6],
