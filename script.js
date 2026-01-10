@@ -66,11 +66,14 @@ speedSlider.addEventListener("input", (event) => setSpeed(event.target.value));
 
 function setLfeVolume(value) {
   lfeNumber.innerHTML = value;
-  lfeSlider.value = value;
   lfeVolume = parseInt(value);
   if (!lfeGain) return;
   lfeGain.gain.value = volumeToLinear(value);
 }
+
+lfeSlider.addEventListener("input", (event) => {
+  setLfeVolume(event.target.value);
+});
 
 async function start(audioOutput) {
   if (audioContext === null) {
@@ -84,9 +87,7 @@ async function start(audioOutput) {
     volumeSlider.addEventListener("input", (event) =>
       setMasterVolume(event.target.value)
     );
-    lfeSlider.addEventListener("input", (event) =>
-      setLfeVolume(event.target.value)
-    );
+
     speedSlider.addEventListener("input", (event) =>
       setSpeed(event.target.value)
     );
