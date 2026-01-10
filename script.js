@@ -4,6 +4,8 @@ const speedSlider = document.querySelector("#speed-slider input");
 const speedNumber = document.querySelector("#speed-slider .number-box");
 const startButton = document.querySelector("#start-audio");
 const muteButton = document.querySelector("#mute-button");
+const lfeSlider = document.querySelector("#lfe-slider input");
+const lfeNumber = document.querySelector("#lfe-slider .number-box");
 
 const numOctaves = 10;
 const minFreq = 20;
@@ -22,37 +24,76 @@ const audioDeviceIndex = 10;
 const defaultWaveform = "saw";
 
 let isMuted = false;
-let previousVolume = volumeSlider.value; // merkt sich vorherigen Lautstärkewert
+const lfeChannel = 3;
+let lfeGain = null;
+let masterVolume = volumeSlider.value; // %
+let lfeVolume = lfeSlider.value; // %
 
 muteButton.addEventListener("pointerdown", () => {
-  if (!masterGain) return; // falls Audio noch nicht gestartet
-
-  if (!isMuted) {
-    // stummschalten
-    previousVolume = volumeSlider.value;
-    masterGain.gain.value = 0;
-    volumeNumber.innerHTML = 0;
-    volumeSlider.value = 0;
-    muteButton.innerHTML = "unmute";
-  } else {
-    // Lautstärke zurück
-    masterGain.gain.value = volumeToLinear(previousVolume);
-    volumeNumber.innerHTML = previousVolume;
-    volumeSlider.value = previousVolume;
-    muteButton.innerHTML = "mute";
-  }
+  if (!masterGain) return;
 
   isMuted = !isMuted;
+
+  if (isMuted) {
+    masterGain.gain.setTargetAtTime(0, audioContext.currentTime, 0.01);
+    muteButton.innerHTML = "unmute";
+  } else {
+    masterGain.gain.setTargetAtTime(
+      volumeToLinear(masterVolume),
+      audioContext.currentTime,
+      0.01
+    );
+    muteButton.innerHTML = "mute";
+  }
 });
 
-volumeSlider.addEventListener("input", (event) =>
-  setVolume(event.target.value)
-);
+function setMasterVolume(value) {
+  masterVolume = parseInt(value);
+  masterGain.gain.value = volumeToLinear(masterVolume);
+  volumeNumber.innerHTML = masterVolume;
+  volumeSlider.value = masterVolume;
+}
+
+volumeSlider.addEventListener("input", (event) => {
+  const value = event.target.value;
+  volumeNumber.innerHTML = value;
+  if (!masterGain) return;
+  if (!isMuted) {
+    masterGain.gain.value = volumeToLinear(value);
+  }
+});
 speedSlider.addEventListener("input", (event) => setSpeed(event.target.value));
 
-function setVolume(value) {
-  if (!masterGain) return;
-  masterGain.gain.value = volumeToLinear(value);
+function setLfeVolume(value) {
+  lfeNumber.innerHTML = value;
+  lfeSlider.value = value;
+  lfeVolume = parseInt(value);
+  if (!lfeGain) return;
+  lfeGain.gain.value = volumeToLinear(value);
+}
+
+async function start(audioOutput) {
+  if (audioContext === null) {
+    audioContext = setupAudio(audioOutput);
+    const merger = setupOutputs();
+
+    initVoices(voices, merger);
+    startGlissando();
+
+    muteButton.addEventListener("pointerdown", () => setMasterVolume(0));
+    volumeSlider.addEventListener("input", (event) =>
+      setMasterVolume(event.target.value)
+    );
+    lfeSlider.addEventListener("input", (event) =>
+      setLfeVolume(event.target.value)
+    );
+    speedSlider.addEventListener("input", (event) =>
+      setSpeed(event.target.value)
+    );
+
+    muteButton.classList.remove("disabled");
+    startButton.classList.add("disabled");
+  }
 }
 
 function setSpeed(value) {
@@ -77,7 +118,7 @@ function setupAudio() {
   audioContext = new AudioContext();
 
   masterGain = audioContext.createGain();
-  masterGain.gain.value = volumeToLinear(volumeSlider.value);
+  masterGain.gain.value = 0;
   masterGain.connect(audioContext.destination);
 
   const merger = setupOutputs();
@@ -95,6 +136,15 @@ function setupOutputs() {
   channelMerger.channelCountMode = "explicit";
   channelMerger.channelInterpretation = "discrete";
 
+  lfeGain = audioContext.createGain();
+  lfeGain.gain.value = volumeToLinear(lfeVolume);
+
+  if (lfeChannel < numOutputs) {
+    lfeGain.connect(channelMerger, 0, lfeChannel);
+  }
+
+  console.log(`setting up ${numOutputs} audio outputs`);
+
   return channelMerger;
 }
 
@@ -111,6 +161,7 @@ function createVoices(merger, numVoices) {
     gain.gain.value = 1;
     const ch = i % numChannels;
     gain.connect(merger, 0, ch);
+    gain.connect(lfeGain);
 
     const osc = audioContext.createOscillator();
     osc.connect(gain);
@@ -125,8 +176,11 @@ function createVoices(merger, numVoices) {
 }
 
 function startGlissando() {
-  lastTime = audioContext.currentTime;
+  const time = audioContext.currentTime;
+  lastTime = time;
   setInterval(onControlFrame, 1000 * controlPeriod);
+  const masterGainValue = volumeToLinear(masterVolume);
+  masterGain.gain.linearRampToValueAtTime(masterGainValue, time + 0.25);
 }
 
 function onControlFrame() {
