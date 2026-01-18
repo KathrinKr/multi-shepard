@@ -8,33 +8,38 @@ const startButton = document.querySelector("#start-audio");
 const muteButton = document.querySelector("#mute-button");
 const lfeSlider = document.querySelector("#lfe-slider input");
 const lfeNumber = document.querySelector("#lfe-slider .number-box");
-const speakerElements = document.querySelectorAll(".speaker"); //Visual UI
+const speakerElements = document.querySelectorAll(".speaker");
 
 const numOctaves = 10;
 const minFreq = 20;
-const amps = [0, 0.707, 1, 0.9, 0.81, 0.73, 0.66, 0.59, 0.53, 0.48, 0]; // amplitude jeyfreames
+const amps = [0, 0.707, 1, 0.9, 0.81, 0.73, 0.66, 0.59, 0.53, 0.48, 0];
 const controlPeriod = 0.01;
 
 let audioContext = null;
 let voices = null;
 let masterGain = null;
-let speed = 200; // cents per second
+let speed = 200;
 let f0 = minFreq;
 let lastTime = 0;
 
 let isMuted = false;
 const lfeChannel = 3;
 let lfeGain = null;
-let masterVolume = volumeSlider.value; // %
-let lfeVolume = lfeSlider.value; // %
+let masterVolume = volumeSlider.value;
+let lfeVolume = lfeSlider.value;
+
+// Welches Output-Device aus der Liste (per Konsole anschauen)
+const audioDeviceIndex = 0; // ANPASSEN!
+
+// ================== UI-Handler ==================
 
 muteButton.addEventListener("pointerdown", () => {
-  if (!masterGain) return;
+  if (!masterGain || !audioContext) return;
   isMuted = !isMuted;
   masterGain.gain.setTargetAtTime(
     isMuted ? 0 : volumeToLinear(masterVolume),
     audioContext.currentTime,
-    0.01
+    0.01,
   );
   muteButton.innerHTML = isMuted ? "unmute" : "mute";
 });
@@ -42,29 +47,31 @@ muteButton.addEventListener("pointerdown", () => {
 volumeSlider.addEventListener("input", (event) => {
   const value = event.target.value;
   volumeNumber.innerHTML = value;
-  if (!masterGain) return;
-  if (!isMuted) {
-    masterGain.gain.value = volumeToLinear(value);
-  }
+  if (!masterGain || isMuted) return;
+  masterGain.gain.value = volumeToLinear(value);
 });
-speedSlider.addEventListener("input", (event) => setSpeed(event.target.value));
 
-function setLfeVolume(value) {
-  lfeNumber.innerHTML = value;
-  lfeVolume = parseInt(value);
-  if (!lfeGain) return;
-  lfeGain.gain.value = volumeToLinear(value);
-}
+speedSlider.addEventListener("input", (event) => setSpeed(event.target.value));
 
 lfeSlider.addEventListener("input", (event) => {
   setLfeVolume(event.target.value);
 });
+
+function setLfeVolume(value) {
+  lfeVolume = parseInt(value);
+  lfeNumber.innerHTML = lfeVolume;
+  lfeSlider.value = lfeVolume;
+  if (!lfeGain) return;
+  lfeGain.gain.value = volumeToLinear(lfeVolume);
+}
 
 function setSpeed(value) {
   speed = value;
   speedNumber.innerHTML = value;
   speedSlider.value = value;
 }
+
+// ================== Audio-Logik ==================
 
 function getAmpForFreq(freq) {
   const octave = Math.log(freq / 20) / Math.log(2);
@@ -77,14 +84,29 @@ function getAmpForFreq(freq) {
   return amp;
 }
 
-function setupAudio() {
-  // AudioContext nach Klick starten
-  audioContext = new AudioContext();
+async function setupAudio(audioOutput) {
+  // AudioContext mit sinkId auf das gewünschte Output-Device
+  audioContext = new AudioContext({
+    sinkId: audioOutput.deviceId,
+    latencyHint: "balanced",
+  });
 
+  const maxChannelCount = audioContext.destination.maxChannelCount;
+
+  audioContext.destination.channelCount = maxChannelCount;
+  audioContext.destination.channelCountMode = "explicit";
+  audioContext.destination.channelInterpretation = "discrete";
+
+  console.log(
+    `audio output device ${audioDeviceIndex}: '${audioOutput.label}' (${maxChannelCount} channels)`,
+  );
+
+  // MasterGain
   masterGain = audioContext.createGain();
   masterGain.gain.value = 0;
   masterGain.connect(audioContext.destination);
 
+  // Outputs + Voices
   const merger = setupOutputs();
   voices = createVoices(merger);
 
@@ -92,25 +114,33 @@ function setupAudio() {
 }
 
 function setupOutputs() {
-  // 8-Kanal Merger für 7.1
-  const channelMerger = audioContext.createChannelMerger(8);
+  const numOutputs = audioContext.destination.channelCount;
 
+  const channelMerger = audioContext.createChannelMerger(numOutputs);
   channelMerger.connect(masterGain);
 
   lfeGain = audioContext.createGain();
   lfeGain.gain.value = volumeToLinear(lfeVolume);
 
-  lfeGain.connect(channelMerger, 0, lfeChannel);
+  if (lfeChannel < numOutputs) {
+    lfeGain.connect(channelMerger, 0, lfeChannel);
+  }
 
-  console.log("setting up 8 audio outputs");
+  console.log(`setting up ${numOutputs} audio outputs`);
 
   return channelMerger;
 }
 
 function createVoices(merger) {
   const result = [];
-
   for (const v of voiceDefs) {
+    if (v.channel >= merger.numberOfInputs) {
+      //falls nur sterio, dann mach sterio
+      console.warn(
+        `Skipping voice on channel ${v.channel} – device has only ${merger.numberOfInputs} channels`,
+      );
+      continue;
+    }
     for (const oct of v.octave) {
       const osc = audioContext.createOscillator();
       osc.type = v.waveform;
@@ -118,15 +148,12 @@ function createVoices(merger) {
       const gain = audioContext.createGain();
       gain.gain.value = 1;
 
-      // Routing auf den gewünschten Lautsprecherkanal
       osc.connect(gain);
-      gain.connect(merger, 0, v.channel); // normaler Kanal
-      gain.connect(lfeGain); // LFE signal
+      gain.connect(merger, 0, v.channel); // Hauptkanal
+      gain.connect(lfeGain); // zusätzlich in LFE
 
-      // Frequenz setzen
       const freq = f0 * 2 ** oct;
       osc.frequency.value = freq;
-
       osc.start();
 
       result.push({ osc, gain, octave: oct, channel: v.channel });
@@ -147,7 +174,7 @@ function startGlissando() {
 function onControlFrame() {
   const time = audioContext.currentTime;
   const dT = time - lastTime;
-  const shift = speed * dT; // in cents
+  const shift = speed * dT;
   const freqFactor = centToLinear(shift);
   let octaveIncr = 0;
 
@@ -189,6 +216,8 @@ function onControlFrame() {
   updateSpeakerUI();
 }
 
+// ================== Hilfsfunktionen ==================
+
 function centToLinear(val) {
   return Math.exp(0.0005776226504666211 * val);
 }
@@ -201,17 +230,46 @@ function decibelToLinear(val) {
   return Math.exp(0.11512925464970229 * val);
 }
 
-// ===== Start Button Event =====
-startButton.addEventListener("click", () => {
-  if (!audioContext) setupAudio();
-});
+// ================== Device-Auswahl und Start ==================
 
-// ================= Visual UI Update ================
+async function listAudioDevices() {
+  await navigator.mediaDevices.getUserMedia({
+    audio: { deviceId: undefined },
+    video: false,
+  });
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+
+  console.log("audio output devices:");
+  const outputs = [];
+  for (let i = 0; i < devices.length; i++) {
+    const device = devices[i];
+    if (device.kind === "audiooutput") {
+      console.log(`   ${outputs.length}: ${device.label}`);
+      outputs.push(device);
+    }
+  }
+
+  return outputs;
+}
+
+(async function main() {
+  const devices = await listAudioDevices();
+  const audioOutput = devices[audioDeviceIndex];
+
+  startButton.addEventListener("pointerdown", () => {
+    if (!audioContext) {
+      setupAudio(audioOutput);
+      startButton.classList.add("disabled");
+    }
+  });
+})();
+
+// ================== Visual UI ==================
+
 function updateSpeakerUI() {
-  // Erstmal alle deaktivieren
   speakerElements.forEach((el) => el.classList.remove("active"));
 
-  // Normale Kanäle aktivieren
   for (const voice of voices) {
     if (voice.gain.gain.value > 0.001) {
       const channel = voice.channel;
@@ -220,7 +278,6 @@ function updateSpeakerUI() {
     }
   }
 
-  // LFE separat prüfen
   if (lfeGain && lfeGain.gain.value > 0.001) {
     const el = document.querySelector(`.speaker[data-channel="3"]`);
     if (el) el.classList.add("active");

@@ -99,10 +99,51 @@ input {
   background-color: #333;
   color: white;
   text-align: center;
-  transition: background-color 0.2s, transform 0.2s;
+  transition:
+    background-color 0.2s,
+    transform 0.2s;
 }
 
 .speaker.active {
   background-color: #4caf50;
   border-radius: 8px black;
+}
+
+#start-audio,
+#mute-button {
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #eaeaea;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+  margin-top: 8px;
+}
+
+/* Hover: leicht heller, kein Springen */
+#start-audio:hover,
+#mute-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Active: nur minimal dunkler */
+#start-audio:active,
+#mute-button:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Unterschiedliche Farben */
+#start-audio {
+  color: #d0e7ff;
+}
+
+#mute-button {
+  color: #ffd0d0;
 }
